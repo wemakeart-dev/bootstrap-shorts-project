@@ -56,7 +56,6 @@ templates:
   pre_process: "E:/path/to/portrait-short-form-pre-process"
 raw_footage: "E:/path/to/raw-footage"
 projects: "E:/path/to/projects"
-name: "client-short-01"
 
 after_effects_exe: null
 
@@ -75,7 +74,6 @@ project_folders:
 | `templates.pre_process` | yes | Directory or `.aep` file for `portrait-short-form-pre-process` |
 | `raw_footage` | yes | Root folder for source clips. Interactive browse cannot leave this directory. Only `.mov` files in the current folder can be selected (not recursive) |
 | `projects` | yes | Parent directory where the new project folder is created |
-| `name` | yes | New project folder and `.aep` name (single path segment) |
 | `after_effects_exe` | no | Full path to `AfterFX.exe`. If `null`, the newest install under Program Files is used |
 | `templates_map` | no | `.aep` filenames used when a `templates.*` path is a directory |
 | `project_folders` | no | After Effects Project panel folder names for imports |
@@ -117,36 +115,41 @@ Current:      E:\clips\session-01
 Enter file numbers (1,3), ranges (1-3), a folder number to open, all, .. to go up, or q to cancel.
 Select files or open a folder [all]: 2,3
 Process these files? [Y/n]: y
+Project name: Client Short 01
+Using project name: client-short-01
 ```
 
-Accepted values: a folder number to open, `..` to go up, `all`, `1,3`, `1-3`, or `q` to cancel. You can only select `.mov` files from the directory you have navigated to (not mixed with folders, and not from multiple folders). `--yes` skips browsing and processes every `.mov` file in the footage **root** directory (not recursive).
+Accepted values: a folder number to open, `..` to go up, `all`, `1,3`, `1-3`, or `q` to cancel. You can only select `.mov` files from the directory you have navigated to (not mixed with folders, and not from multiple folders). `--yes` skips browsing and processes every `.mov` file in the footage **root** directory (not recursive). It does **not** skip the project name prompt.
+
+After footage is confirmed, the CLI asks for the new project name. The value is lowercased and spaces become hyphens (`Client Short 01` → `client-short-01`). Only ASCII letters, digits, spaces, and hyphens are allowed. Pass `--name` to skip that prompt (same rules). A `name` key in `config.yaml` is rejected as deprecated.
 
 CLI flags override the config file:
 
 | Flag | Purpose |
 |---|---|
 | `--config` / `-c` | YAML config path (default `config.yaml`) |
-| `--name` | Override `name` |
+| `--name` | Project name; skips the name prompt. Lowercased; spaces become hyphens |
 | `--raw-footage` | Override the `raw_footage` root directory |
 | `--force` | Delete and replace an existing `projects/<name>` folder |
-| `--yes` / `-y` | Process every `.mov` file in the footage root directory without prompting |
+| `--yes` / `-y` | Process every `.mov` file in the footage root directory without prompting (still asks for the project name unless `--name` is set) |
 | `--timeout` | Seconds to wait for After Effects (default `600`) |
 
 ## What happens
 
-1. Validate the config. Fail if templates, the raw footage root directory, or the projects parent directory are missing. The root may contain only child folders; clips are not required at the top level.
+1. Validate the config. Fail if templates, the raw footage root directory, or the projects parent directory are missing. The root may contain only child folders; clips are not required at the top level. Fail if the config still has a `name` key.
 2. Browse the footage root (or, with `--yes`, take every `.mov` file in the root). `.mp4` and other types are ignored. Fail if you confirm a folder that has no `.mov` files, or if `--yes` finds none in the root.
 3. List folders and clips in the current directory, let you navigate or select files, and confirm that set (unless `--yes`).
-4. Refuse to continue if `projects/<name>` already exists, unless `--force`.
-5. Create `projects/<name>/(Footage)/01-footage/` and copy the selected `.mov` files there (progress bar).
-6. Write `.bootstrap/job.json` with absolute paths.
-7. Launch `AfterFX.exe -s` once (spinner while waiting). The script:
+4. Prompt for the project name (or use `--name`). Normalize to a lowercase hyphenated slug.
+5. Refuse to continue if `projects/<name>` already exists, unless `--force`.
+6. Create `projects/<name>/(Footage)/01-footage/` and copy the selected `.mov` files there (progress bar).
+7. Write `.bootstrap/job.json` with absolute paths.
+8. Launch `AfterFX.exe -s` once (spinner while waiting). The script:
    - opens the main template and saves it as `<name>.aep`
    - imports the copied files into `01-footage`
    - copies any other template `FileSource` footage into `(Footage)/<panel-folder>/` and relinks it
    - opens the pre-process template and saves it as `<name>-pre-process.aep`
    - imports the same files into `footage`
-8. Python reads `.bootstrap/result.json` and exits non-zero if After Effects reported errors.
+9. Python reads `.bootstrap/result.json` and exits non-zero if After Effects reported errors.
 
 After Effects is left running. The launcher does not pass `-project` together with the script (that combination is unreliable).
 
@@ -156,10 +159,12 @@ After Effects is left running. The launcher does not pass `-project` together wi
 |---|---|
 | Missing `config.yaml` or invalid YAML | CLI error |
 | Unknown config key | CLI error (`extra: forbid`) |
+| Deprecated `name` key in config | CLI error; prompt for the name or pass `--name` |
 | Missing template `.aep` | CLI error |
 | Missing raw footage directory | CLI error |
 | No `.mov` files in the current folder (or in the root with `--yes`) | CLI error |
 | Footage selection cancelled | CLI error |
+| Invalid project name | CLI error (`--name`) or re-prompt |
 | Duplicate footage filenames | CLI error |
 | `projects/<name>` already exists | CLI error; pass `--force` to replace |
 | `AfterFX.exe` not found | CLI error; set `after_effects_exe` |

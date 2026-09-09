@@ -12,3 +12,4 @@ def test_help() -> None:
     assert "--raw-footage" in result.stdout
     assert "--force" in result.stdout
     assert "--yes" in result.stdout
+    assert "--name" in result.stdout
