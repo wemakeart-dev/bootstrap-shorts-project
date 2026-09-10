@@ -31,6 +31,13 @@ def run_job_jsx_path() -> Path:
     return path
 
 
+def run_match_tally_jsx_path() -> Path:
+    path = repo_root() / "scripts" / "ae" / "run_match_tally.jsx"
+    if not path.is_file():
+        raise AfterEffectsJobError(f"Missing ExtendScript runner: {path}")
+    return path
+
+
 def _escape_ae_string(value: str) -> str:
     return value.replace("\\", "/").replace("'", "\\'")
 

@@ -11,6 +11,7 @@ from rich.console import Console
 from bootstrap_shorts.ae_bridge import DEFAULT_TIMEOUT_SECONDS
 from bootstrap_shorts.config import assign_project_name, load_config
 from bootstrap_shorts.errors import BootstrapError
+from bootstrap_shorts.match_tally import run_match_tally
 from bootstrap_shorts.pipeline import run_bootstrap
 from bootstrap_shorts.project_name import prompt_project_name, require_project_name
 from bootstrap_shorts.select_footage import select_raw_footage
@@ -51,6 +52,16 @@ def main(
         float,
         typer.Option("--timeout", help="Seconds to wait for After Effects to finish."),
     ] = DEFAULT_TIMEOUT_SECONDS,
+    match_tally: Annotated[
+        bool,
+        typer.Option(
+            "--match-tally",
+            help=(
+                "Apply timestamps.txt to the currently open After Effects project "
+                "instead of bootstrapping a new one."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Bootstrap a new After Effects shorts project from templates."""
     console = Console()
@@ -60,6 +71,9 @@ def main(
             raw_footage=raw_footage,
             force=force,
         )
+        if match_tally:
+            run_match_tally(resolved, timeout=timeout, console=console)
+            return
         selected = select_raw_footage(
             resolved.raw_footage_dir,
             assume_yes=yes,
