@@ -9,6 +9,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from rich.console import Console
+
 from bootstrap_shorts.errors import AfterEffectsJobError
 from bootstrap_shorts.filesystem import as_ae_path, read_result_json
 
@@ -75,7 +77,7 @@ def launch_after_effects(
 ) -> subprocess.Popen[bytes]:
     script = build_script_arg(job_file, run_job_jsx)
     command = [str(afterfx_exe), "-s", script]
-    LOGGER.info("Launching After Effects: %s -s <job>", afterfx_exe)
+    LOGGER.debug("Launching After Effects: %s -s <job>", afterfx_exe)
     LOGGER.debug("ExtendScript command: %s", script)
     return subprocess.Popen(
         command,
@@ -91,6 +93,7 @@ def run_after_effects_job(
     *,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
     run_job_jsx: Path | None = None,
+    console: Console | None = None,
 ) -> dict[str, Any]:
     jsx = run_job_jsx or run_job_jsx_path()
     if result_file.exists():
@@ -98,10 +101,18 @@ def run_after_effects_job(
 
     process = launch_after_effects(afterfx_exe, job_file, jsx)
     try:
-        payload = wait_for_result(result_file, timeout=timeout, process=process)
+        if console is not None:
+            with console.status("Waiting for After Effects…"):
+                payload = wait_for_result(result_file, timeout=timeout, process=process)
+        else:
+            payload = wait_for_result(result_file, timeout=timeout, process=process)
     except AfterEffectsJobError:
         if process.poll() is None:
-            LOGGER.warning("After Effects is still running; leaving it open.")
+            message = "After Effects is still running; leaving it open."
+            if console is not None:
+                console.print(f"[yellow]{message}[/yellow]")
+            else:
+                LOGGER.warning("%s", message)
         raise
 
     if not payload.get("ok"):

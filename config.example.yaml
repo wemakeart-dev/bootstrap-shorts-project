@@ -4,9 +4,9 @@
 templates:
   main: "E:/path/to/portrait-short-form"
   pre_process: "E:/path/to/portrait-short-form-pre-process"
+# Root folder for source clips. Browse stays inside this directory.
 raw_footage: "E:/path/to/raw-footage"
 projects: "E:/path/to/projects"
-name: "client-short-01"
 
 # Optional. Leave null to auto-detect the newest AfterFX.exe under Program Files.
 after_effects_exe: null

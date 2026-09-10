@@ -9,6 +9,8 @@ Python (managed with [uv](https://docs.astral.sh/uv/)) prepares the project fold
 
 Native **File → Dependencies → Collect Files** is not scriptable. This tool copies and relinks footage directly into the new project root instead of creating a temporary `<name>-deps` folder.
 
+The CLI is styled with [Rich](https://github.com/Textualize/rich): a folder table for footage selection, a progress bar while copying clips, and a spinner while waiting for After Effects. It is still a command-line app, not a GUI.
+
 **NOTE:** This bootstrapping CLI is very specific to my own content pipeline. It solves a repetitive issue for how I start short-form content projects and how I manage my footage.
 
 ## Resulting layout
@@ -54,7 +56,6 @@ templates:
   pre_process: "E:/path/to/portrait-short-form-pre-process"
 raw_footage: "E:/path/to/raw-footage"
 projects: "E:/path/to/projects"
-name: "client-short-01"
 
 after_effects_exe: null
 
@@ -71,9 +72,8 @@ project_folders:
 |---|---|---|
 | `templates.main` | yes | Directory or `.aep` file for `portrait-short-form` |
 | `templates.pre_process` | yes | Directory or `.aep` file for `portrait-short-form-pre-process` |
-| `raw_footage` | yes | Directory of source clips. Only top-level `.mov` files are collected |
+| `raw_footage` | yes | Root folder for source clips. Interactive browse cannot leave this directory. Only `.mov` files in the current folder can be selected (not recursive) |
 | `projects` | yes | Parent directory where the new project folder is created |
-| `name` | yes | New project folder and `.aep` name (single path segment) |
 | `after_effects_exe` | no | Full path to `AfterFX.exe`. If `null`, the newest install under Program Files is used |
 | `templates_map` | no | `.aep` filenames used when a `templates.*` path is a directory |
 | `project_folders` | no | After Effects Project panel folder names for imports |
@@ -96,46 +96,60 @@ To use different template folders or panel names later, change `templates`, `tem
 ```powershell
 uv run bootstrap-shorts
 uv run bootstrap-shorts --config config.yaml
-uv run bootstrap-shorts --name other-short --raw-footage E:\clips\session-01
+uv run bootstrap-shorts --name other-short --raw-footage E:\clips
 uv run bootstrap-shorts --force
 uv run bootstrap-shorts --yes
 ```
 
-After discovery, the CLI lists every `.mov` file and waits for a selection:
+The CLI lists child folders and `.mov` files in the current directory (directories first). Enter a folder number to drill in, `..` to go up (blocked at the footage root), then select files from that folder:
 
 ```text
-Select files to process [all]: 1,3
+Footage root: E:\clips
+Current:      E:\clips\session-01
+
+  #  Name              Size
+  1  [dir] takes-a
+  2  clip-a.mov        1.2 GB
+  3  clip-b.mov        800.0 MB
+
+Enter file numbers (1,3), ranges (1-3), a folder number to open, all, .. to go up, or q to cancel.
+Select files or open a folder [all]: 2,3
 Process these files? [Y/n]: y
+Project name: Client Short 01
+Using project name: client-short-01
 ```
 
-Accepted selection values: `all`, `1,3`, `1-3`, or `q` to cancel. `--yes` skips this prompt and processes every discovered file.
+Accepted values: a folder number to open, `..` to go up, `all`, `1,3`, `1-3`, or `q` to cancel. You can only select `.mov` files from the directory you have navigated to (not mixed with folders, and not from multiple folders). `--yes` skips browsing and processes every `.mov` file in the footage **root** directory (not recursive). It does **not** skip the project name prompt.
+
+After footage is confirmed, the CLI asks for the new project name. The value is lowercased and spaces become hyphens (`Client Short 01` → `client-short-01`). Only ASCII letters, digits, spaces, and hyphens are allowed. Pass `--name` to skip that prompt (same rules). A `name` key in `config.yaml` is rejected as deprecated.
 
 CLI flags override the config file:
 
 | Flag | Purpose |
 |---|---|
 | `--config` / `-c` | YAML config path (default `config.yaml`) |
-| `--name` | Override `name` |
-| `--raw-footage` | Override the `raw_footage` directory |
+| `--name` | Project name; skips the name prompt. Lowercased; spaces become hyphens |
+| `--raw-footage` | Override the `raw_footage` root directory |
 | `--force` | Delete and replace an existing `projects/<name>` folder |
-| `--yes` / `-y` | Process every discovered `.mov` file without prompting |
+| `--yes` / `-y` | Process every `.mov` file in the footage root directory without prompting (still asks for the project name unless `--name` is set) |
 | `--timeout` | Seconds to wait for After Effects (default `600`) |
 
 ## What happens
 
-1. Validate the config. Fail if templates, the raw footage directory, or the projects parent directory are missing.
-2. Collect every top-level `.mov` file in `raw_footage` into an in-process list (`.mp4` and other types are ignored). Fail if none are found.
-3. List the discovered files, let you select which to process, and confirm that set (unless `--yes`).
-4. Refuse to continue if `projects/<name>` already exists, unless `--force`.
-5. Create `projects/<name>/(Footage)/01-footage/` and copy the selected `.mov` files there.
-6. Write `.bootstrap/job.json` with absolute paths.
-7. Launch `AfterFX.exe -s` once. The script:
+1. Validate the config. Fail if templates, the raw footage root directory, or the projects parent directory are missing. The root may contain only child folders; clips are not required at the top level. Fail if the config still has a `name` key.
+2. Browse the footage root (or, with `--yes`, take every `.mov` file in the root). `.mp4` and other types are ignored. Fail if you confirm a folder that has no `.mov` files, or if `--yes` finds none in the root.
+3. List folders and clips in the current directory, let you navigate or select files, and confirm that set (unless `--yes`).
+4. Prompt for the project name (or use `--name`). Normalize to a lowercase hyphenated slug.
+5. Refuse to continue if `projects/<name>` already exists, unless `--force`.
+6. Create `projects/<name>/(Footage)/01-footage/` and copy the selected `.mov` files there (progress bar).
+7. Write `.bootstrap/job.json` with absolute paths.
+8. Launch `AfterFX.exe -s` once (spinner while waiting). The script:
    - opens the main template and saves it as `<name>.aep`
    - imports the copied files into `01-footage`
    - copies any other template `FileSource` footage into `(Footage)/<panel-folder>/` and relinks it
    - opens the pre-process template and saves it as `<name>-pre-process.aep`
    - imports the same files into `footage`
-8. Python reads `.bootstrap/result.json` and exits non-zero if After Effects reported errors.
+9. Python reads `.bootstrap/result.json` and exits non-zero if After Effects reported errors.
 
 After Effects is left running. The launcher does not pass `-project` together with the script (that combination is unreliable).
 
@@ -145,15 +159,19 @@ After Effects is left running. The launcher does not pass `-project` together wi
 |---|---|
 | Missing `config.yaml` or invalid YAML | CLI error |
 | Unknown config key | CLI error (`extra: forbid`) |
+| Deprecated `name` key in config | CLI error; prompt for the name or pass `--name` |
 | Missing template `.aep` | CLI error |
 | Missing raw footage directory | CLI error |
-| No `.mov` files in `raw_footage` | CLI error |
+| No `.mov` files in the current folder (or in the root with `--yes`) | CLI error |
 | Footage selection cancelled | CLI error |
+| Invalid project name | CLI error (`--name`) or re-prompt |
 | Duplicate footage filenames | CLI error |
 | `projects/<name>` already exists | CLI error; pass `--force` to replace |
 | `AfterFX.exe` not found | CLI error; set `after_effects_exe` |
 | After Effects never writes `result.json` | Timeout; enable script file access in Preferences |
 | Import or save error inside AE | `result.json` `ok: false` and a CLI error |
+
+Navigation cannot leave the `raw_footage` root. `..` at the root is refused; the browse loop continues.
 
 ## Known limits
 
@@ -170,7 +188,7 @@ uv run pytest
 uv run ruff check src tests
 ```
 
-Unit tests cover config validation, footage copy / `job.json` shape, and AfterFX discovery. They do not launch After Effects.
+Unit tests cover config validation, footage browsing / copy / `job.json` shape, and AfterFX discovery. They do not launch After Effects.
 
 ## Project layout
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from bootstrap_shorts.errors import ConfigError, ProjectExistsError
 
@@ -43,20 +43,9 @@ class RawConfig(BaseModel):
     templates: TemplatesPaths
     raw_footage: Path
     projects: Path
-    name: str
     after_effects_exe: Path | None = None
     templates_map: TemplatesMap = Field(default_factory=TemplatesMap)
     project_folders: ProjectFolders = Field(default_factory=ProjectFolders)
-
-    @field_validator("name")
-    @classmethod
-    def name_is_single_segment(cls, value: str) -> str:
-        name = value.strip()
-        if not name:
-            raise ValueError("name must not be empty")
-        if "/" in name or "\\" in name or name in {".", ".."}:
-            raise ValueError("name must be a single folder segment")
-        return name
 
 
 class ResolvedConfig(BaseModel):
@@ -89,11 +78,11 @@ def discover_mov_files(directory: Path) -> list[Path]:
     files = [
         path.resolve()
         for path in directory.iterdir()
-        if path.is_file() and path.suffix.lower() == RAW_FOOTAGE_SUFFIX
+        if path.is_file()
+        and not path.name.startswith(".")
+        and path.suffix.lower() == RAW_FOOTAGE_SUFFIX
     ]
     files.sort(key=lambda path: path.name.lower())
-    if not files:
-        raise ConfigError(f"No .mov files found in raw_footage directory: {directory}")
     return files
 
 
@@ -125,12 +114,13 @@ def load_yaml(path: Path) -> dict:
 def parse_raw_config(
     data: dict,
     *,
-    name: str | None = None,
     raw_footage: Path | None = None,
 ) -> RawConfig:
     payload = dict(data)
-    if name:
-        payload["name"] = name
+    if "name" in payload:
+        raise ConfigError(
+            "name is deprecated; enter the project name when prompted, or pass --name"
+        )
     if raw_footage is not None:
         payload["raw_footage"] = str(raw_footage)
     try:
@@ -168,20 +158,15 @@ def resolve_config(
     )
 
     raw_footage_dir = _resolve_path(raw.raw_footage, base)
-    footage = discover_mov_files(raw_footage_dir)
-
-    project_dir = (projects_dir / raw.name).resolve()
-    if project_dir.exists() and not force:
-        raise ProjectExistsError(
-            f"Project directory already exists: {project_dir} (use --force to replace it)"
-        )
+    if not raw_footage_dir.is_dir():
+        raise ConfigError(f"raw_footage directory does not exist: {raw_footage_dir}")
 
     return ResolvedConfig(
-        name=raw.name,
+        name="",
         projects_dir=projects_dir,
-        project_dir=project_dir,
+        project_dir=projects_dir,
         raw_footage_dir=raw_footage_dir,
-        raw_footage=footage,
+        raw_footage=[],
         main_template=main_template,
         preprocess_template=preprocess_template,
         after_effects_exe=after_effects_exe,
@@ -191,13 +176,22 @@ def resolve_config(
     )
 
 
+def assign_project_name(config: ResolvedConfig, name: str) -> ResolvedConfig:
+    """Bind a normalized project name and destination directory."""
+    project_dir = (config.projects_dir / name).resolve()
+    if project_dir.exists() and not config.force:
+        raise ProjectExistsError(
+            f"Project directory already exists: {project_dir} (use --force to replace it)"
+        )
+    return config.model_copy(update={"name": name, "project_dir": project_dir})
+
+
 def load_config(
     path: Path,
     *,
-    name: str | None = None,
     raw_footage: Path | None = None,
     force: bool = False,
 ) -> ResolvedConfig:
     data = load_yaml(path)
-    raw = parse_raw_config(data, name=name, raw_footage=raw_footage)
+    raw = parse_raw_config(data, raw_footage=raw_footage)
     return resolve_config(raw, config_dir=path.parent, force=force)

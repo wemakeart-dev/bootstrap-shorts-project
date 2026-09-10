@@ -4,6 +4,7 @@ import pytest
 import yaml
 
 from bootstrap_shorts.config import (
+    assign_project_name,
     discover_mov_files,
     load_config,
     parse_raw_config,
@@ -55,28 +56,28 @@ def _templates(layout: dict[str, Path]) -> dict[str, str]:
     }
 
 
-def test_load_config_discovers_mov_files(tmp_path: Path) -> None:
+def _payload(layout: dict[str, Path], **overrides: object) -> dict:
+    data: dict = {
+        "templates": _templates(layout),
+        "raw_footage": str(layout["footage"]),
+        "projects": str(layout["projects"]),
+    }
+    data.update(overrides)
+    return data
+
+
+def test_load_config_resolves_paths(tmp_path: Path) -> None:
     layout = _layout(tmp_path)
-    extra = layout["footage"] / "clip-c.MOV"
-    extra.write_bytes(b"mov")
-    config_path = _write_config(
-        tmp_path,
-        {
-            "templates": _templates(layout),
-            "raw_footage": str(layout["footage"]),
-            "projects": str(layout["projects"]),
-            "name": "client-short-01",
-        },
-    )
+    config_path = _write_config(tmp_path, _payload(layout))
 
     resolved = load_config(config_path)
 
-    assert resolved.name == "client-short-01"
+    assert resolved.name == ""
     assert resolved.main_template == layout["main"].resolve()
     assert resolved.preprocess_template == layout["preprocess"].resolve()
     assert resolved.raw_footage_dir == layout["footage"].resolve()
-    assert resolved.raw_footage == [layout["clip"].resolve(), extra.resolve()]
-    assert resolved.project_dir == (layout["projects"] / "client-short-01").resolve()
+    assert resolved.raw_footage == []
+    assert resolved.project_dir == layout["projects"].resolve()
     assert resolved.main_import_folder == "01-footage"
     assert resolved.preprocess_import_folder == "footage"
 
@@ -94,7 +95,6 @@ def test_relative_paths_resolve_against_config_dir(tmp_path: Path) -> None:
             },
             "raw_footage": "../clips",
             "projects": "../projects",
-            "name": "rel-project",
         },
     )
 
@@ -103,7 +103,7 @@ def test_relative_paths_resolve_against_config_dir(tmp_path: Path) -> None:
     assert resolved.main_template == layout["main"].resolve()
     assert resolved.preprocess_template == layout["preprocess"].resolve()
     assert resolved.raw_footage_dir == layout["footage"].resolve()
-    assert resolved.raw_footage[0] == layout["clip"].resolve()
+    assert resolved.raw_footage == []
 
 
 def test_template_file_paths_are_accepted(tmp_path: Path) -> None:
@@ -116,7 +116,6 @@ def test_template_file_paths_are_accepted(tmp_path: Path) -> None:
             },
             "raw_footage": str(layout["footage"]),
             "projects": str(layout["projects"]),
-            "name": "direct-files",
         }
     )
 
@@ -125,34 +124,27 @@ def test_template_file_paths_are_accepted(tmp_path: Path) -> None:
     assert resolved.preprocess_template == layout["preprocess"].resolve()
 
 
-def test_cli_overrides_win(tmp_path: Path) -> None:
+def test_cli_raw_footage_override_wins(tmp_path: Path) -> None:
     layout = _layout(tmp_path)
     override = tmp_path / "other-clips"
     override.mkdir()
     extra = override / "override.mov"
     extra.write_bytes(b"mov")
-    config_path = _write_config(
-        tmp_path,
-        {
-            "templates": _templates(layout),
-            "raw_footage": str(layout["footage"]),
-            "projects": str(layout["projects"]),
-            "name": "from-file",
-        },
-    )
+    config_path = _write_config(tmp_path, _payload(layout))
 
-    resolved = load_config(config_path, name="from-cli", raw_footage=override)
+    resolved = load_config(config_path, raw_footage=override)
 
-    assert resolved.name == "from-cli"
     assert resolved.raw_footage_dir == override.resolve()
-    assert resolved.raw_footage == [extra.resolve()]
-    assert resolved.project_dir == (layout["projects"] / "from-cli").resolve()
+    assert resolved.raw_footage == []
 
 
 def test_discover_mov_skips_non_mov(tmp_path: Path) -> None:
     layout = _layout(tmp_path)
+    hidden = layout["footage"] / ".hidden.mov"
+    hidden.write_bytes(b"mov")
     found = discover_mov_files(layout["footage"])
     assert found == [layout["clip"].resolve()]
+    assert hidden not in found
 
 
 def test_missing_key_is_invalid() -> None:
@@ -167,8 +159,19 @@ def test_unknown_key_is_rejected() -> None:
                 "templates": {"main": "a", "pre_process": "b"},
                 "projects": "y",
                 "raw_footage": "clips",
-                "name": "ok",
                 "unexpected": True,
+            }
+        )
+
+
+def test_name_in_config_is_deprecated() -> None:
+    with pytest.raises(ConfigError, match="name is deprecated"):
+        parse_raw_config(
+            {
+                "templates": {"main": "a", "pre_process": "b"},
+                "projects": "y",
+                "raw_footage": "clips",
+                "name": "client-short-01",
             }
         )
 
@@ -176,14 +179,7 @@ def test_unknown_key_is_rejected() -> None:
 def test_missing_template(tmp_path: Path) -> None:
     layout = _layout(tmp_path)
     layout["main"].unlink()
-    raw = parse_raw_config(
-        {
-            "templates": _templates(layout),
-            "raw_footage": str(layout["footage"]),
-            "projects": str(layout["projects"]),
-            "name": "missing-template",
-        }
-    )
+    raw = parse_raw_config(_payload(layout))
 
     with pytest.raises(ConfigError, match="Main template not found"):
         resolve_config(raw, config_dir=tmp_path)
@@ -192,15 +188,13 @@ def test_missing_template(tmp_path: Path) -> None:
 def test_missing_template_directory(tmp_path: Path) -> None:
     layout = _layout(tmp_path)
     raw = parse_raw_config(
-        {
-            "templates": {
+        _payload(
+            layout,
+            templates={
                 "main": str(tmp_path / "missing-main"),
                 "pre_process": str(layout["preprocess_dir"]),
             },
-            "raw_footage": str(layout["footage"]),
-            "projects": str(layout["projects"]),
-            "name": "missing-dir",
-        }
+        )
     )
 
     with pytest.raises(ConfigError, match="Main template path does not exist"):
@@ -209,79 +203,66 @@ def test_missing_template_directory(tmp_path: Path) -> None:
 
 def test_missing_footage_directory(tmp_path: Path) -> None:
     layout = _layout(tmp_path)
-    raw = parse_raw_config(
-        {
-            "templates": _templates(layout),
-            "raw_footage": str(tmp_path / "missing-clips"),
-            "projects": str(layout["projects"]),
-            "name": "missing-dir",
-        }
-    )
+    raw = parse_raw_config(_payload(layout, raw_footage=str(tmp_path / "missing-clips")))
 
     with pytest.raises(ConfigError, match="raw_footage directory does not exist"):
         resolve_config(raw, config_dir=tmp_path)
 
 
-def test_no_mov_files(tmp_path: Path) -> None:
+def test_empty_footage_directory_is_valid(tmp_path: Path) -> None:
     layout = _layout(tmp_path)
     empty = tmp_path / "empty"
     empty.mkdir()
-    raw = parse_raw_config(
-        {
-            "templates": _templates(layout),
-            "raw_footage": str(empty),
-            "projects": str(layout["projects"]),
-            "name": "empty-dir",
-        }
-    )
+    raw = parse_raw_config(_payload(layout, raw_footage=str(empty)))
 
-    with pytest.raises(ConfigError, match="No .mov files found"):
-        resolve_config(raw, config_dir=tmp_path)
+    resolved = resolve_config(raw, config_dir=tmp_path)
+    assert resolved.raw_footage_dir == empty.resolve()
+    assert resolved.raw_footage == []
 
 
-def test_existing_project_dir_without_force(tmp_path: Path) -> None:
+def test_footage_root_with_only_subdirs_is_valid(tmp_path: Path) -> None:
+    layout = _layout(tmp_path)
+    root = tmp_path / "nested-root"
+    nested = root / "session-01"
+    nested.mkdir(parents=True)
+    clip = nested / "nested.mov"
+    clip.write_bytes(b"mov")
+    raw = parse_raw_config(_payload(layout, raw_footage=str(root)))
+
+    resolved = resolve_config(raw, config_dir=tmp_path)
+    assert resolved.raw_footage_dir == root.resolve()
+    assert resolved.raw_footage == []
+    assert discover_mov_files(root) == []
+    assert discover_mov_files(nested) == [clip.resolve()]
+
+
+def test_discover_mov_empty_directory(tmp_path: Path) -> None:
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert discover_mov_files(empty) == []
+
+
+def test_assign_project_name_rejects_existing_without_force(tmp_path: Path) -> None:
     layout = _layout(tmp_path)
     existing = layout["projects"] / "already"
     existing.mkdir()
-    raw = parse_raw_config(
-        {
-            "templates": _templates(layout),
-            "raw_footage": str(layout["footage"]),
-            "projects": str(layout["projects"]),
-            "name": "already",
-        }
-    )
+    raw = parse_raw_config(_payload(layout))
+    resolved = resolve_config(raw, config_dir=tmp_path, force=False)
 
     with pytest.raises(ProjectExistsError, match="already exists"):
-        resolve_config(raw, config_dir=tmp_path, force=False)
+        assign_project_name(resolved, "already")
 
 
-def test_existing_project_dir_allowed_with_force(tmp_path: Path) -> None:
+def test_assign_project_name_allowed_with_force(tmp_path: Path) -> None:
     layout = _layout(tmp_path)
     (layout["projects"] / "already").mkdir()
-    raw = parse_raw_config(
-        {
-            "templates": _templates(layout),
-            "raw_footage": str(layout["footage"]),
-            "projects": str(layout["projects"]),
-            "name": "already",
-        }
-    )
-
+    raw = parse_raw_config(_payload(layout))
     resolved = resolve_config(raw, config_dir=tmp_path, force=True)
-    assert resolved.force is True
 
-
-def test_invalid_name_rejected() -> None:
-    with pytest.raises(ConfigError, match="Invalid config"):
-        parse_raw_config(
-            {
-                "templates": {"main": "a", "pre_process": "b"},
-                "projects": "y",
-                "raw_footage": "clips",
-                "name": "nested/name",
-            }
-        )
+    bound = assign_project_name(resolved, "already")
+    assert bound.force is True
+    assert bound.name == "already"
+    assert bound.project_dir == (layout["projects"] / "already").resolve()
 
 
 def test_missing_config_file(tmp_path: Path) -> None:

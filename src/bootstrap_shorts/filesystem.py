@@ -7,6 +7,9 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from rich.console import Console
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn
+
 from bootstrap_shorts.config import ResolvedConfig
 from bootstrap_shorts.errors import ConfigError
 
@@ -45,20 +48,43 @@ def prepare_project_dir(project_dir: Path, *, force: bool) -> None:
     bootstrap_dir(project_dir).mkdir()
 
 
-def copy_raw_footage(sources: list[Path], dest_dir: Path) -> list[Path]:
+def _copy_one(source: Path, dest_dir: Path, seen_names: set[str]) -> Path:
+    if source.name in seen_names:
+        raise ConfigError(
+            f"Duplicate raw footage filename: {source.name}. "
+            "Rename one of the files so each clip is unique."
+        )
+    seen_names.add(source.name)
+    destination = dest_dir / source.name
+    shutil.copy2(source, destination)
+    return destination.resolve()
+
+
+def copy_raw_footage(
+    sources: list[Path],
+    dest_dir: Path,
+    *,
+    console: Console | None = None,
+) -> list[Path]:
     dest_dir.mkdir(parents=True, exist_ok=True)
     copied: list[Path] = []
     seen_names: set[str] = set()
-    for source in sources:
-        if source.name in seen_names:
-            raise ConfigError(
-                f"Duplicate raw footage filename: {source.name}. "
-                "Rename one of the files so each clip is unique."
-            )
-        seen_names.add(source.name)
-        destination = dest_dir / source.name
-        shutil.copy2(source, destination)
-        copied.append(destination.resolve())
+    if console is None:
+        for source in sources:
+            copied.append(_copy_one(source, dest_dir, seen_names))
+        return copied
+
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        console=console,
+        transient=True,
+    ) as progress:
+        task_id = progress.add_task("Copying footage…", total=len(sources))
+        for source in sources:
+            copied.append(_copy_one(source, dest_dir, seen_names))
+            progress.advance(task_id)
     return copied
 
 

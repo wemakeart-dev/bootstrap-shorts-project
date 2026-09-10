@@ -1,11 +1,8 @@
-import typer
 from typer.testing import CliRunner
 
-from bootstrap_shorts.cli import main
+from bootstrap_shorts.cli import app
 
 runner = CliRunner()
-app = typer.Typer()
-app.command()(main)
 
 
 def test_help() -> None:
@@ -15,3 +12,4 @@ def test_help() -> None:
     assert "--raw-footage" in result.stdout
     assert "--force" in result.stdout
     assert "--yes" in result.stdout
+    assert "--name" in result.stdout
