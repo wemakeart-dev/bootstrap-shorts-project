@@ -99,6 +99,7 @@ uv run bootstrap-shorts --config config.yaml
 uv run bootstrap-shorts --name other-short --raw-footage E:\clips
 uv run bootstrap-shorts --force
 uv run bootstrap-shorts --yes
+uv run bootstrap-shorts --match-tally
 ```
 
 The CLI lists child folders and `.mov` files in the current directory (directories first). Enter a folder number to drill in, `..` to go up (blocked at the footage root), then select files from that folder:
@@ -133,6 +134,7 @@ CLI flags override the config file:
 | `--force` | Delete and replace an existing `projects/<name>` folder |
 | `--yes` / `-y` | Process every `.mov` file in the footage root directory without prompting (still asks for the project name unless `--name` is set) |
 | `--timeout` | Seconds to wait for After Effects (default `600`) |
+| `--match-tally` | Apply `timestamps.txt` to the currently open After Effects project instead of bootstrapping a new one |
 
 ## What happens
 
@@ -153,6 +155,30 @@ CLI flags override the config file:
 
 After Effects is left running. The launcher does not pass `-project` together with the script (that combination is unreliable).
 
+## Match tally
+
+`--match-tally` is a separate mode. It does **not** copy footage or create a new project. After Effects must already be open with a `portrait-short-form`-based project that contains `05-text-assets` / `match-tally` (and the nested `air-tally`, `ground-tally`, and `naval-tally` comps).
+
+Place a `timestamps.txt` file in the directory you run the CLI from (the repo root). Copy [example-timestamps.txt](example-timestamps.txt) and edit it. `timestamps.txt` is gitignored, like `config.yaml`.
+
+```text
+0:00:02:32
+0:01:06:11 - Naval
+0:01:20:37 - Ground
+0:01:29:51 - Air
+```
+
+Each line is After Effects timecode (`H:MM:SS:FF`). An optional identifier after ` - ` selects the nested tally composition:
+
+- no identifier → `ground-tally`
+- `Air` / `Ground` / `Naval` (case-insensitive) → the matching composition
+
+Blank lines are ignored. Unknown identifiers or malformed timecode fail in Python before After Effects is launched.
+
+The script keyframes **Effects → Slider Control** on the source text layer in each tally composition: value `0` at `0:00:00:00`, then `1`, `2`, … at each timestamp for that type. The existing source-text expression `Math.trunc(effect("Slider Control")("Slider"));` is left untouched. Re-running `--match-tally` replaces previous slider keys.
+
+`config.yaml` is still required so AfterFX can be resolved. Footage browsing and the project-name prompt are skipped.
+
 ## Failures
 
 | Situation | Result |
@@ -170,6 +196,9 @@ After Effects is left running. The launcher does not pass `-project` together wi
 | `AfterFX.exe` not found | CLI error; set `after_effects_exe` |
 | After Effects never writes `result.json` | Timeout; enable script file access in Preferences |
 | Import or save error inside AE | `result.json` `ok: false` and a CLI error |
+| Missing `timestamps.txt` with `--match-tally` | CLI error; After Effects is not launched |
+| Invalid line in `timestamps.txt` | CLI error (unknown identifier or bad timecode) |
+| No AE project open, or tally comps missing | `result.json` `ok: false` and a CLI error |
 
 Navigation cannot leave the `raw_footage` root. `..` at the root is refused; the browse loop continues.
 
@@ -188,13 +217,14 @@ uv run pytest
 uv run ruff check src tests
 ```
 
-Unit tests cover config validation, footage browsing / copy / `job.json` shape, and AfterFX discovery. They do not launch After Effects.
+Unit tests cover config validation, footage browsing / copy / `job.json` shape, timestamp parsing, `--match-tally` CLI wiring, and AfterFX discovery. They do not launch After Effects.
 
 ## Project layout
 
 ```text
 src/bootstrap_shorts/    Python CLI, config, filesystem, AE launcher
-scripts/ae/              ExtendScript helpers and job runner
+scripts/ae/              ExtendScript helpers, bootstrap runner, match-tally runner
 config.example.yaml      Documented config template
+example-timestamps.txt   Sample timestamps.txt for --match-tally
 tests/                   Unit tests (no live After Effects)
 ```

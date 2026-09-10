@@ -23,3 +23,7 @@ class AfterEffectsJobError(BootstrapError):
 
 class SelectionAborted(BootstrapError):
     """The user cancelled footage selection."""
+
+
+class TimestampError(BootstrapError):
+    """timestamps.txt is missing or invalid."""

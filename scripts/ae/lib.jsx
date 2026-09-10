@@ -1,4 +1,4 @@
-/*global FolderItem, FootageItem, FileSource, ImportOptions, ImportAsType, Folder, File */
+/*global FolderItem, FootageItem, CompItem, FileSource, ImportOptions, ImportAsType, Folder, File */
 var BootstrapLib = {
     readFile: function (path) {
         var file = new File(path);
@@ -190,6 +190,96 @@ var BootstrapLib = {
             }
         }
         return relinked;
+    },
+
+    findCompByName: function (name) {
+        var i;
+        for (i = 1; i <= app.project.numItems; i++) {
+            var item = app.project.item(i);
+            if (item instanceof CompItem && item.name === name) {
+                return item;
+            }
+        }
+        return null;
+    },
+
+    timecodeToSeconds: function (timecode, frameRate) {
+        var parts = String(timecode).split(":");
+        if (parts.length !== 4) {
+            throw new Error("Invalid timecode: " + timecode);
+        }
+        var hours = parseInt(parts[0], 10);
+        var minutes = parseInt(parts[1], 10);
+        var seconds = parseInt(parts[2], 10);
+        var frames = parseInt(parts[3], 10);
+        return (hours * 3600) + (minutes * 60) + seconds + (frames / frameRate);
+    },
+
+    findSliderProperty: function (comp) {
+        var i;
+        for (i = 1; i <= comp.numLayers; i++) {
+            var layer = comp.layer(i);
+            var effects = layer.property("ADBE Effect Parade");
+            if (!effects) {
+                continue;
+            }
+            var sliderFx = effects.property("ADBE Slider Control");
+            if (!sliderFx) {
+                sliderFx = effects.property("Slider Control");
+            }
+            if (!sliderFx) {
+                continue;
+            }
+            var slider = sliderFx.property("ADBE Slider Control-0001");
+            if (!slider) {
+                slider = sliderFx.property("Slider");
+            }
+            if (slider) {
+                return { layer: layer, slider: slider };
+            }
+        }
+        return null;
+    },
+
+    clearKeys: function (property) {
+        while (property.numKeys > 0) {
+            property.removeKey(1);
+        }
+    },
+
+    applyTallySliderKeys: function (comp, timecodes, warnings) {
+        var found = BootstrapLib.findSliderProperty(comp);
+        if (!found) {
+            throw new Error(
+                "No Slider Control on a layer in composition '" + comp.name + "'"
+            );
+        }
+        var layer = found.layer;
+        var slider = found.slider;
+        var wasLocked = layer.locked;
+        if (wasLocked) {
+            layer.locked = false;
+        }
+        try {
+            BootstrapLib.clearKeys(slider);
+            slider.setValueAtTime(0, 0);
+            var i;
+            for (i = 0; i < timecodes.length; i++) {
+                var seconds = BootstrapLib.timecodeToSeconds(timecodes[i], comp.frameRate);
+                if (seconds > comp.duration) {
+                    warnings.push(
+                        "Timestamp " + timecodes[i] +
+                        " is past the duration of '" + comp.name + "'"
+                    );
+                }
+                slider.setValueAtTime(seconds, i + 1);
+            }
+            return timecodes.length;
+        } finally {
+            if (wasLocked) {
+                layer.locked = true;
+            }
+        }
     },
 
     writeResult: function (path, result) {
