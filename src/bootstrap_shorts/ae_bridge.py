@@ -13,6 +13,7 @@ from rich.console import Console
 
 from bootstrap_shorts.errors import AfterEffectsJobError
 from bootstrap_shorts.filesystem import as_ae_path, read_result_json
+from bootstrap_shorts.paths import ae_scripts_dir
 
 LOGGER = logging.getLogger(__name__)
 
@@ -20,19 +21,15 @@ DEFAULT_TIMEOUT_SECONDS = 600.0
 POLL_INTERVAL_SECONDS = 0.5
 
 
-def repo_root() -> Path:
-    return Path(__file__).resolve().parents[2]
-
-
 def run_job_jsx_path() -> Path:
-    path = repo_root() / "scripts" / "ae" / "run_job.jsx"
+    path = ae_scripts_dir() / "run_job.jsx"
     if not path.is_file():
         raise AfterEffectsJobError(f"Missing ExtendScript runner: {path}")
     return path
 
 
 def run_match_tally_jsx_path() -> Path:
-    path = repo_root() / "scripts" / "ae" / "run_match_tally.jsx"
+    path = ae_scripts_dir() / "run_match_tally.jsx"
     if not path.is_file():
         raise AfterEffectsJobError(f"Missing ExtendScript runner: {path}")
     return path

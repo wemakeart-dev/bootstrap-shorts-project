@@ -3,7 +3,11 @@ from pathlib import Path
 import pytest
 
 from bootstrap_shorts.errors import TimestampError
-from bootstrap_shorts.timestamps import load_timestamps, parse_timestamps_text
+from bootstrap_shorts.timestamps import (
+    default_timestamps_path,
+    load_timestamps,
+    parse_timestamps_text,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = REPO_ROOT / "example-timestamps.txt"
@@ -72,3 +76,13 @@ def test_missing_file_is_rejected(tmp_path: Path) -> None:
 
 def test_empty_file_yields_no_events() -> None:
     assert parse_timestamps_text("\n\n") == []
+
+
+def test_default_timestamps_path_follows_user_files_dir(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "bootstrap_shorts.timestamps.user_files_dir",
+        lambda: tmp_path,
+    )
+    assert default_timestamps_path() == tmp_path / "timestamps.txt"
