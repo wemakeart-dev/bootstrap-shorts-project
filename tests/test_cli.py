@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import yaml
@@ -6,6 +7,11 @@ from typer.testing import CliRunner
 from bootstrap_shorts.cli import app
 
 runner = CliRunner()
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _plain_text(text: str) -> str:
+    return "".join(_ANSI_RE.sub("", text).split())
 
 
 def _write_valid_config(tmp_path: Path) -> Path:
@@ -37,14 +43,20 @@ def _write_valid_config(tmp_path: Path) -> Path:
 
 
 def test_help() -> None:
-    result = runner.invoke(app, ["--help"])
+    result = runner.invoke(
+        app,
+        ["--help"],
+        color=False,
+        env={"COLUMNS": "120", "NO_COLOR": "1", "TERM": "dumb"},
+    )
     assert result.exit_code == 0
-    assert "--config" in result.stdout
-    assert "--raw-footage" in result.stdout
-    assert "--force" in result.stdout
-    assert "--yes" in result.stdout
-    assert "--name" in result.stdout
-    assert "--match-tally" in result.stdout
+    output = _plain_text(result.stdout)
+    assert "--config" in output
+    assert "--raw-footage" in output
+    assert "--force" in output
+    assert "--yes" in output
+    assert "--name" in output
+    assert "--match-tally" in output
 
 
 def test_match_tally_missing_timestamps_does_not_launch_ae(
