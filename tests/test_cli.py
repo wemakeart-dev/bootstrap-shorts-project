@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import yaml
@@ -6,6 +7,11 @@ from typer.testing import CliRunner
 from bootstrap_shorts.cli import app
 
 runner = CliRunner()
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _plain_text(text: str) -> str:
+    return "".join(_ANSI_RE.sub("", text).split())
 
 
 def _write_valid_config(tmp_path: Path) -> Path:
@@ -37,14 +43,20 @@ def _write_valid_config(tmp_path: Path) -> Path:
 
 
 def test_help() -> None:
-    result = runner.invoke(app, ["--help"])
+    result = runner.invoke(
+        app,
+        ["--help"],
+        color=False,
+        env={"COLUMNS": "120", "NO_COLOR": "1", "TERM": "dumb"},
+    )
     assert result.exit_code == 0
-    assert "--config" in result.stdout
-    assert "--raw-footage" in result.stdout
-    assert "--force" in result.stdout
-    assert "--yes" in result.stdout
-    assert "--name" in result.stdout
-    assert "--match-tally" in result.stdout
+    output = _plain_text(result.stdout)
+    assert "--config" in output
+    assert "--raw-footage" in output
+    assert "--force" in output
+    assert "--yes" in output
+    assert "--name" in output
+    assert "--match-tally" in output
 
 
 def test_match_tally_missing_timestamps_does_not_launch_ae(
@@ -108,3 +120,50 @@ def test_match_tally_skips_bootstrap_prompts(tmp_path: Path, monkeypatch) -> Non
     assert result.exit_code == 0
     assert "Applied match tally" in result.stdout
     assert "0 air, 1 ground, 0 naval" in result.stdout
+
+
+def test_bootstrap_yes_name_invokes_pipeline(tmp_path: Path, monkeypatch) -> None:
+    config_path = _write_valid_config(tmp_path)
+    clip = tmp_path / "clips" / "clip-a.mov"
+    clip.write_bytes(b"mov")
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "bootstrap_shorts.cli.run_bootstrap",
+        lambda resolved, **_kwargs: captured.update(
+            name=resolved.name,
+            footage=list(resolved.raw_footage),
+        )
+        or {"ok": True},
+    )
+
+    result = runner.invoke(
+        app,
+        ["--yes", "--name", "Client Short 01", "--config", str(config_path)],
+    )
+
+    assert result.exit_code == 0
+    assert captured["name"] == "client-short-01"
+    assert captured["footage"] == [clip.resolve()]
+    assert "Using project name: client-short-01" in result.stdout
+
+
+def test_omitted_config_uses_default_config_path(tmp_path: Path, monkeypatch) -> None:
+    config_path = _write_valid_config(tmp_path)
+    (tmp_path / "clips" / "clip-a.mov").write_bytes(b"mov")
+    used: list[Path] = []
+
+    monkeypatch.setattr(
+        "bootstrap_shorts.cli.default_config_path",
+        lambda: config_path,
+    )
+    monkeypatch.setattr(
+        "bootstrap_shorts.cli.run_bootstrap",
+        lambda resolved, **_kwargs: used.append(resolved.project_dir) or {"ok": True},
+    )
+
+    result = runner.invoke(app, ["--yes", "--name", "from-default"])
+
+    assert result.exit_code == 0
+    assert used
+    assert used[0].name == "from-default"

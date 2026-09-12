@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Literal
 
 from bootstrap_shorts.errors import TimestampError
+from bootstrap_shorts.paths import user_files_dir
 
 TIMESTAMPS_FILENAME = "timestamps.txt"
 DEFAULT_TALLY = "ground"
@@ -41,7 +42,7 @@ class TallyEvent:
 
 
 def default_timestamps_path() -> Path:
-    return Path.cwd() / TIMESTAMPS_FILENAME
+    return user_files_dir() / TIMESTAMPS_FILENAME
 
 
 def _parse_timecode(timecode: str, *, source: str, line_no: int) -> tuple[int, int, int, int]:

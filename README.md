@@ -30,13 +30,36 @@ The CLI is styled with [Rich](https://github.com/Textualize/rich): a folder tabl
 
 ## Requirements
 
-- [uv](https://docs.astral.sh/uv/)
+Shared (source or compiled exe):
+
 - Windows 10
-- Python 3.11+ (uv will install it if needed)
 - Adobe After Effects with both template `.aep` files
 - In After Effects: **Preferences → Scripting & Expressions → Allow Scripts to Write Files and Access Network**
 
+To run from source, also install:
+
+- [uv](https://docs.astral.sh/uv/)
+- Python 3.11+ (uv will install it if needed)
+
+The compiled exe does **not** need uv or Python. After Effects stays a separate install; it is not inside the executable.
+
 ## Install
+
+### Compiled executable
+
+Download `bootstrap-shorts-<version>-windows.exe` from the repository [Releases](https://github.com/wemakeart-dev/bootstrap-shorts-project/releases) page, rename it to `bootstrap-shorts.exe` if you like, and put it in its own folder. Copy [config.example.yaml](config.example.yaml) to `config.yaml` in that same folder and fill in local paths. For `--match-tally`, also copy [example-timestamps.txt](example-timestamps.txt) to `timestamps.txt` next to the exe.
+
+Those two files are the only extras that belong next to the executable:
+
+```text
+bootstrap-shorts.exe
+config.yaml
+timestamps.txt
+```
+
+Releases are published when a pull request is merged into `master`. The version and tag come from `[project].version` in [pyproject.toml](pyproject.toml) (`0.1.0` → `v0.1.0`). Bump that field to open a new release; merging again at the same version updates the existing release asset.
+
+### From source
 
 From the repository root:
 
@@ -44,11 +67,11 @@ From the repository root:
 uv sync --group dev
 ```
 
-This creates `.venv`, installs runtime and test dependencies, and writes `uv.lock` as needed.
+This creates `.venv`, installs runtime and test dependencies, and writes `uv.lock` as needed. Add `--group build` if you also want PyInstaller for a local exe build.
 
 ## Config
 
-Copy [config.example.yaml](config.example.yaml) to `config.yaml` (gitignored) and fill in local paths:
+Copy [config.example.yaml](config.example.yaml) to `config.yaml` (gitignored) and fill in local paths. When you run the compiled exe, place `config.yaml` next to it. When you run from source, the default is `config.yaml` in the current directory:
 
 ```yaml
 templates:
@@ -93,6 +116,19 @@ To use different template folders or panel names later, change `templates`, `tem
 
 ## Run
 
+From a compiled exe (run it from the folder that contains `config.yaml`):
+
+```powershell
+.\bootstrap-shorts.exe
+.\bootstrap-shorts.exe --config config.yaml
+.\bootstrap-shorts.exe --name other-short --raw-footage E:\clips
+.\bootstrap-shorts.exe --force
+.\bootstrap-shorts.exe --yes
+.\bootstrap-shorts.exe --match-tally
+```
+
+From source:
+
 ```powershell
 uv run bootstrap-shorts
 uv run bootstrap-shorts --config config.yaml
@@ -128,7 +164,7 @@ CLI flags override the config file:
 
 | Flag | Purpose |
 |---|---|
-| `--config` / `-c` | YAML config path (default `config.yaml`) |
+| `--config` / `-c` | YAML config path. Defaults to `config.yaml` next to the exe, or in the current directory when running from source |
 | `--name` | Project name; skips the name prompt. Lowercased; spaces become hyphens |
 | `--raw-footage` | Override the `raw_footage` root directory |
 | `--force` | Delete and replace an existing `projects/<name>` folder |
@@ -159,7 +195,7 @@ After Effects is left running. The launcher does not pass `-project` together wi
 
 `--match-tally` is a separate mode. It does **not** copy footage or create a new project. After Effects must already be open with a `portrait-short-form`-based project that contains `05-text-assets` / `match-tally` (and the nested `air-tally`, `ground-tally`, and `naval-tally` comps).
 
-Place a `timestamps.txt` file in the directory you run the CLI from (the repo root). Copy [example-timestamps.txt](example-timestamps.txt) and edit it. `timestamps.txt` is gitignored, like `config.yaml`.
+Place a `timestamps.txt` file next to the executable, or in the directory you run the CLI from when working from source (the repo root). Copy [example-timestamps.txt](example-timestamps.txt) and edit it. `timestamps.txt` is gitignored, like `config.yaml`.
 
 ```text
 0:00:02:32
@@ -208,6 +244,8 @@ Navigation cannot leave the `raw_footage` root. `..` at the root is refused; the
 - Layered Photoshop / Illustrator sources may not relink per layer. Those items are skipped with a warning.
 - Cinema 4D and some plugin-owned files are not collected.
 - Image sequences are imported as single files unless you add sequence handling later.
+- After Effects is not bundled inside the exe.
+- One-file PyInstaller builds may be flagged by SmartScreen or antivirus until you allow the file.
 
 ## Development
 
@@ -217,13 +255,30 @@ uv run pytest
 uv run ruff check src tests
 ```
 
-Unit tests cover config validation, footage browsing / copy / `job.json` shape, timestamp parsing, `--match-tally` CLI wiring, and AfterFX discovery. They do not launch After Effects.
+Unit tests cover config validation, footage browsing / copy / `job.json` shape, timestamp parsing, `--match-tally` CLI wiring, AfterFX discovery, frozen path resolution, and packaging invariants. They do not launch After Effects.
+
+### Build a Windows exe locally
+
+```powershell
+uv sync --group dev --group build
+uv run pyinstaller --noconfirm bootstrap-shorts.spec
+```
+
+The onefile console build is written to `dist/bootstrap-shorts.exe`. Copy `config.yaml` (and `timestamps.txt` if you use `--match-tally`) next to that exe before running it.
+
+### Continuous integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs pytest and ruff on every pull request and every push to `master`. The Windows onefile build and GitHub Release run only on pushes to `master` (including merged pull requests). Pull requests do not compile or publish.
+
+The release tag and asset name use `[project].version` from [pyproject.toml](pyproject.toml), for example `v0.1.0` and `bootstrap-shorts-0.1.0-windows.exe`.
 
 ## Project layout
 
 ```text
 src/bootstrap_shorts/    Python CLI, config, filesystem, AE launcher
 scripts/ae/              ExtendScript helpers, bootstrap runner, match-tally runner
+bootstrap-shorts.spec    PyInstaller onefile spec
+.github/workflows/       Test CI and master-only Windows release
 config.example.yaml      Documented config template
 example-timestamps.txt   Sample timestamps.txt for --match-tally
 tests/                   Unit tests (no live After Effects)
