@@ -7,7 +7,7 @@ on:
 
 jobs:
   test:
-    runs-on: windows-latest
+    runs-on: blacksmith-2vcpu-windows-2025
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -29,7 +29,7 @@ jobs:
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     needs: test
-    runs-on: windows-latest
+    runs-on: blacksmith-2vcpu-windows-2025
     permissions:
       contents: write
     steps:
