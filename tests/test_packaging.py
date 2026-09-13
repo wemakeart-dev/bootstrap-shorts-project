@@ -16,7 +16,8 @@ def test_spec_bundles_ae_scripts() -> None:
     assert '"scripts/ae"' in spec or "'scripts/ae'" in spec
     assert "upx=False" in spec
     assert "console=True" in spec
-    assert "name=\"bootstrap-shorts\"" in spec or "name='bootstrap-shorts'" in spec
+    assert "name=\"bsp\"" in spec or "name='bsp'" in spec
+    assert "bootstrap-shorts-project-icon.ico" in spec
 
 
 def test_example_config_is_valid_with_stubbed_paths(tmp_path: Path) -> None:

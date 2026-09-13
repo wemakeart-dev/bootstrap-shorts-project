@@ -36,7 +36,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="bootstrap-shorts",
+    name="bsp",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -49,4 +49,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=str(ROOT / "bootstrap-shorts-project-icon.ico"),
 )

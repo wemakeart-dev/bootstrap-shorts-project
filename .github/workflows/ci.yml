@@ -55,18 +55,18 @@ jobs:
         run: uv run pyinstaller --noconfirm bootstrap-shorts.spec
 
       - name: Smoke test
-        run: dist/bootstrap-shorts.exe --help
+        run: dist/bsp.exe --help
 
       - name: Stage release asset
         shell: pwsh
         run: |
-          Copy-Item dist/bootstrap-shorts.exe "dist/bootstrap-shorts-${{ steps.version.outputs.version }}-windows.exe"
+          Copy-Item dist/bsp.exe "dist/bsp-${{ steps.version.outputs.version }}-windows.exe"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: v${{ steps.version.outputs.version }}
-          files: dist/bootstrap-shorts-${{ steps.version.outputs.version }}-windows.exe
+          files: dist/bsp-${{ steps.version.outputs.version }}-windows.exe
           fail_on_unmatched_files: true
           make_latest: true
