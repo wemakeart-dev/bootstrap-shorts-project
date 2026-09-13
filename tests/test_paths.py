@@ -36,7 +36,7 @@ def test_source_user_files_dir_is_cwd(tmp_path: Path, monkeypatch) -> None:
 
 def test_frozen_resource_and_user_dirs(tmp_path: Path, monkeypatch) -> None:
     meipass = tmp_path / "meipass"
-    exe = tmp_path / "dist" / "bootstrap-shorts.exe"
+    exe = tmp_path / "dist" / "bsp.exe"
     meipass.mkdir()
     (meipass / "scripts" / "ae").mkdir(parents=True)
     exe.parent.mkdir()

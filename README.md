@@ -47,12 +47,12 @@ The compiled exe does **not** need uv or Python. After Effects stays a separate 
 
 ### Compiled executable
 
-Download `bootstrap-shorts-<version>-windows.exe` from the repository [Releases](https://github.com/wemakeart-dev/bootstrap-shorts-project/releases) page, rename it to `bootstrap-shorts.exe` if you like, and put it in its own folder. Copy [config.example.yaml](config.example.yaml) to `config.yaml` in that same folder and fill in local paths. For `--match-tally`, also copy [example-timestamps.txt](example-timestamps.txt) to `timestamps.txt` next to the exe.
+Download `bsp-<version>-windows.exe` from the repository [Releases](https://github.com/wemakeart-dev/bootstrap-shorts-project/releases) page, rename it to `bsp.exe` if you like, and put it in its own folder. Copy [config.example.yaml](config.example.yaml) to `config.yaml` in that same folder and fill in local paths. For `--match-tally`, also copy [example-timestamps.txt](example-timestamps.txt) to `timestamps.txt` next to the exe.
 
 Those two files are the only extras that belong next to the executable:
 
 ```text
-bootstrap-shorts.exe
+bsp.exe
 config.yaml
 timestamps.txt
 ```
@@ -119,12 +119,12 @@ To use different template folders or panel names later, change `templates`, `tem
 From a compiled exe (run it from the folder that contains `config.yaml`):
 
 ```powershell
-.\bootstrap-shorts.exe
-.\bootstrap-shorts.exe --config config.yaml
-.\bootstrap-shorts.exe --name other-short --raw-footage E:\clips
-.\bootstrap-shorts.exe --force
-.\bootstrap-shorts.exe --yes
-.\bootstrap-shorts.exe --match-tally
+.\bsp.exe
+.\bsp.exe --config config.yaml
+.\bsp.exe --name other-short --raw-footage E:\clips
+.\bsp.exe --force
+.\bsp.exe --yes
+.\bsp.exe --match-tally
 ```
 
 From source:
@@ -264,13 +264,13 @@ uv sync --group dev --group build
 uv run pyinstaller --noconfirm bootstrap-shorts.spec
 ```
 
-The onefile console build is written to `dist/bootstrap-shorts.exe`. Copy `config.yaml` (and `timestamps.txt` if you use `--match-tally`) next to that exe before running it.
+The onefile console build is written to `dist/bsp.exe` and uses [bootstrap-shorts-project-icon.ico](bootstrap-shorts-project-icon.ico). Copy `config.yaml` (and `timestamps.txt` if you use `--match-tally`) next to that exe before running it.
 
 ### Continuous integration
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs pytest and ruff on every pull request and every push to `master`. The Windows onefile build and GitHub Release run only on pushes to `master` (including merged pull requests). Pull requests do not compile or publish.
 
-The release tag and asset name use `[project].version` from [pyproject.toml](pyproject.toml), for example `v0.1.0` and `bootstrap-shorts-0.1.0-windows.exe`.
+The release tag and asset name use `[project].version` from [pyproject.toml](pyproject.toml), for example `v0.1.0` and `bsp-0.1.0-windows.exe`.
 
 ## Project layout
 
@@ -278,6 +278,7 @@ The release tag and asset name use `[project].version` from [pyproject.toml](pyp
 src/bootstrap_shorts/    Python CLI, config, filesystem, AE launcher
 scripts/ae/              ExtendScript helpers, bootstrap runner, match-tally runner
 bootstrap-shorts.spec    PyInstaller onefile spec
+bootstrap-shorts-project-icon.ico  Embedded Windows exe icon
 .github/workflows/       Test CI and master-only Windows release
 config.example.yaml      Documented config template
 example-timestamps.txt   Sample timestamps.txt for --match-tally
